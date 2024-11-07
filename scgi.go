@@ -132,7 +132,7 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	// Write additional headers
 	for key, val := range req.Header {
-		headerBuf.WriteString(key)
+		headerBuf.WriteString(strings.ToUpper(key))
 		headerBuf.Write([]byte{0x00})
 		headerBuf.WriteString(strings.Join(val, ","))
 		headerBuf.Write([]byte{0x00})
