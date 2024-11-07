@@ -90,9 +90,13 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, errors.New("scgi: round trip: invalid scgi connection string")
 	}
 
-	data, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		return nil, errors.Wrap(err, "scgi: round trip: body read error")
+	var data []byte
+	var err error
+	if req.Body != nil {
+		data, err = ioutil.ReadAll(req.Body)
+		if err != nil {
+			return nil, errors.Wrap(err, "scgi: round trip: body read error")
+		}
 	}
 
 	var scgiConn net.Conn
