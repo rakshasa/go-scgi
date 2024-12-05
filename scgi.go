@@ -4,19 +4,19 @@
 // There are two main ways to use this package. It can be used directly as a
 // net/http.Client's RoundTripper or it can be added to a net/http.Transport
 // using RegisterProtocol.
-package scgi // import "gopkg.in/scgi.v0"
+package scgi
 
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // WriteNetstring takes the given data and writes it in netstring format to the
@@ -24,22 +24,22 @@ import (
 func WriteNetstring(w io.Writer, data []byte) error {
 	_, err := w.Write([]byte(strconv.Itoa(len(data))))
 	if err != nil {
-		return errors.Wrap(err, "netstring: write error")
+		return fmt.Errorf("netstring: write error: %v", err)
 	}
 
 	_, err = w.Write([]byte{':'})
 	if err != nil {
-		return errors.Wrap(err, "netstring: write error")
+		return fmt.Errorf("netstring: write error: %v", err)
 	}
 
 	_, err = w.Write(data)
 	if err != nil {
-		return errors.Wrap(err, "netstring: write error")
+		return fmt.Errorf("netstring: write error: %v", err)
 	}
 
 	_, err = w.Write([]byte{','})
 	if err != nil {
-		return errors.Wrap(err, "netstring: write error")
+		return fmt.Errorf("netstring: write error: %v", err)
 	}
 
 	return nil
@@ -50,20 +50,20 @@ func WriteNetstring(w io.Writer, data []byte) error {
 func ReadNetstring(r *bufio.Reader) (string, error) {
 	dataLen, err := r.ReadString(':')
 	if err != nil {
-		return "", errors.Wrap(err, "netstring: read error")
+		return "", fmt.Errorf("netstring: read error: %v", err)
 	}
 
 	// Chop off the trailing ":"
 	dataLen = dataLen[:len(dataLen)-1]
 	count, err := strconv.Atoi(dataLen)
 	if err != nil {
-		return "", errors.Wrap(err, "netstring: read error")
+		return "", fmt.Errorf("netstring: read error: %v", err)
 	}
 
 	data := make([]byte, count+1)
 	_, err = io.ReadFull(r, data)
 	if err != nil {
-		return "", errors.Wrap(err, "netstring: read error")
+		return "", fmt.Errorf("netstring: read error: %v", err)
 	}
 
 	if data[len(data)-1] != ',' {
@@ -79,9 +79,9 @@ func ReadNetstring(r *bufio.Reader) (string, error) {
 //
 // This client supports three different types of urls:
 //
-//     - Relative socket path (scgi:///relative/path)
-//     - Absolute socket path (scgi:////absolute/path)
-//     - Host/Port (scgi://host:port)
+//   - Relative socket path (scgi:///relative/path)
+//   - Absolute socket path (scgi:////absolute/path)
+//   - Host/Port (scgi://host:port)
 type Client struct{}
 
 // RoundTrip implements the net/http.RoundTripper interface.
@@ -95,7 +95,7 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Body != nil {
 		data, err = ioutil.ReadAll(req.Body)
 		if err != nil {
-			return nil, errors.Wrap(err, "scgi: round trip: body read error")
+			return nil, fmt.Errorf("scgi: round trip: body read error: %v", err)
 		}
 	}
 
@@ -107,6 +107,9 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 			path = path[1:]
 		}
 		scgiConn, err = net.Dial("unix", req.URL.Path)
+		if err != nil {
+			return nil, fmt.Errorf("scgi: round trip over unix socket: %v", err)
+		}
 	} else {
 		host := req.URL.Hostname()
 		port := req.URL.Port()
@@ -114,6 +117,9 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 			port = "80"
 		}
 		scgiConn, err = net.Dial("tcp", host+":"+port)
+		if err != nil {
+			return nil, fmt.Errorf("scgi: round trip over tcp: %v", err)
+		}
 	}
 
 	// Write the required SCGI headers
@@ -144,12 +150,12 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	err = WriteNetstring(scgiConn, headerBuf.Bytes())
 	if err != nil {
-		return nil, errors.Wrap(err, "scgi: round trip")
+		return nil, fmt.Errorf("scgi: round trip: %v", err)
 	}
 
 	_, err = scgiConn.Write(data)
 	if err != nil {
-		return nil, errors.Wrap(err, "scgi: round trip write error")
+		return nil, fmt.Errorf("scgi: round trip write error: %v", err)
 	}
 
 	// There isn't a method for cgi reponse parsing, but they're close enough
@@ -161,7 +167,7 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Grab the first line and chop off the extra characters from the end.
 	firstLine, err := scgiRead.ReadString('\n')
 	if err != nil {
-		return nil, errors.Wrap(err, "scgi: round trip: invalid format")
+		return nil, fmt.Errorf("scgi: round trip: invalid format: %v", err)
 	}
 	if firstLine[len(firstLine)-1] == '\n' {
 		firstLine = firstLine[:len(firstLine)-1]
